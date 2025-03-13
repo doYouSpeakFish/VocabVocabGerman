@@ -1,0 +1,30 @@
+{
+  "name": "vocabvocabsite",
+  "version": "1.0.0",
+  "description": "A Progressive Web App for language learning with spaced repetition. VocabVocab helps you learn vocabulary through example sentences and effective review scheduling.",
+  "main": "src/js/app.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "jest",
+    "build": "./build.sh",
+    "start": "http-server dist",
+    "clean": "rimraf dist/*",
+    "dev": "npm run build && npm start"
+  },
+  "keywords": [
+    "vocabulary",
+    "language-learning",
+    "spaced-repetition",
+    "pwa"
+  ],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "http-server": "^14.1.1",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
+    "rimraf": "^5.0.5"
+  }
+}

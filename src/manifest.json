@@ -1,0 +1,17 @@
+{
+  "name": "VocabVocab",
+  "short_name": "VocabVocab",
+  "description": "Language learning app with spaced repetition for vocabulary",
+  "start_url": "/index.html",
+  "display": "standalone",
+  "background_color": "#f9f9f9",
+  "theme_color": "#4285f4",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+} 
