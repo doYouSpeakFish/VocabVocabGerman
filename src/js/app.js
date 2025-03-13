@@ -44,11 +44,15 @@ if (isBrowser) {
  */
 async function initApp() {
   try {
-    // Register service worker for PWA
+    // Register service worker for offline support
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js')
-        .then(reg => console.log('Service Worker registered', reg))
-        .catch(err => console.error('Service Worker registration failed', err));
+      navigator.serviceWorker.register('./service-worker.js')
+        .then((registration) => {
+          console.log('Service Worker registered with scope:', registration.scope);
+        })
+        .catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
     }
 
     // Load vocabulary data
@@ -77,7 +81,7 @@ async function initApp() {
  */
 async function loadVocabulary() {
   try {
-    const response = await fetch('/vocab.json');
+    const response = await fetch('./vocab.json');
     
     if (!response.ok) {
       throw new Error(`Failed to load vocabulary: ${response.status} ${response.statusText}`);

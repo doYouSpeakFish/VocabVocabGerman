@@ -1,12 +1,12 @@
 const CACHE_NAME = 'vocabvocab-v1';
 const ASSETS_TO_CACHE = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/vocab.json',
-  '/icon.svg',
-  '/src/css/styles.css',
-  '/src/js/app.js'
+  './',
+  './index.html',
+  './manifest.json',
+  './vocab.json',
+  './icon.svg',
+  './css/styles.css',
+  './js/app.js'
 ];
 
 // Install event - cache assets
