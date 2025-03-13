@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#4285f4">
+  <meta name="description" content="VocabVocab - A language learning app with spaced repetition">
+  <title>VocabVocab</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon.svg">
+</head>
+<body>
+  <div class="app-container">
+    <header id="top">
+      <h1>VocabVocab</h1>
+      <div class="stats">
+        <span id="total-views">Total Views: 0</span>
+        <span id="learned-words">Learned Words: 0</span>
+      </div>
+    </header>
+    
+    <main id="word-container">
+      <div class="word-card">
+        <h2 id="current-word">Loading...</h2>
+        <p id="word-status"></p>
+        <div class="explanation">
+          <p id="explanation"></p>
+          <p id="explanation-translation" class="translation"></p>
+        </div>
+        
+        <div class="examples" id="examples-container">
+          <!-- Examples will be inserted here -->
+        </div>
+        
+        <button id="next-button" class="btn">Next Word</button>
+      </div>
+    </main>
+  </div>
+
+  <script src="js/app.js" type="module"></script>
+</body>
+</html> 
