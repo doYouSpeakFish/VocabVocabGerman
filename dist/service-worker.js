@@ -1,16 +1,21 @@
-const CACHE_NAME = 'vocabvocab-v1';
+const CACHE_NAME = 'vocabvocab-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
   './manifest.json',
-  './vocab.json',
   './icon.svg',
-  './css/styles.css',
-  './js/app.js'
+  './css/styles.css'
+];
+
+// Dynamic resources that shouldn't be cached
+const NETWORK_ONLY = [
+  './js/app.js',
+  './vocab.json'
 ];
 
 // Install event - cache assets
 self.addEventListener('install', event => {
+  console.log('Service Worker installing');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
@@ -18,10 +23,14 @@ self.addEventListener('install', event => {
         return cache.addAll(ASSETS_TO_CACHE);
       })
   );
+  
+  // Force activation of the new service worker
+  self.skipWaiting();
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', event => {
+  console.log('Service Worker activating');
   event.waitUntil(
     caches.keys().then(cacheNames => {
       return Promise.all(
@@ -32,12 +41,34 @@ self.addEventListener('activate', event => {
           }
         })
       );
+    }).then(() => {
+      console.log('Service Worker activated');
+      // Ensure the new service worker takes control immediately
+      return self.clients.claim();
     })
   );
 });
 
 // Fetch event - serve from cache, fall back to network
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // Check if this is a request for a dynamic resource that shouldn't be cached
+  const shouldSkipCache = NETWORK_ONLY.some(path => url.pathname.endsWith(path));
+  
+  if (shouldSkipCache) {
+    console.log('Network only for:', url.pathname);
+    event.respondWith(
+      fetch(event.request)
+        .catch(error => {
+          console.error('Network fetch failed for:', url.pathname, error);
+          // Try to get from cache as fallback
+          return caches.match(event.request);
+        })
+    );
+    return;
+  }
+  
   event.respondWith(
     caches.match(event.request)
       .then(response => {

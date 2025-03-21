@@ -30,9 +30,12 @@ let totalViews = isTest ? global.totalViews : 0;
 const isBrowser = typeof window !== 'undefined';
 let currentWordElement, wordStatusElement, explanationElement, 
     explanationTranslationElement, examplesContainer, nextButton, 
-    totalViewsElement, learnedWordsElement;
+    totalViewsElement, learnedWordsElement, dailyProgressElement, currentStreakElement;
 
-if (isBrowser) {
+// Function to safely get DOM elements (handles both initial load and cache load)
+function initDOMElements() {
+  if (!isBrowser) return;
+  
   currentWordElement = document.getElementById('current-word');
   wordStatusElement = document.getElementById('word-status');
   explanationElement = document.getElementById('explanation');
@@ -41,6 +44,28 @@ if (isBrowser) {
   nextButton = document.getElementById('next-button');
   totalViewsElement = document.getElementById('total-views');
   learnedWordsElement = document.getElementById('learned-words');
+  dailyProgressElement = document.getElementById('daily-progress');
+  currentStreakElement = document.getElementById('current-streak');
+  
+  console.log('DOM elements initialized:', 
+    !!currentWordElement, 
+    !!dailyProgressElement,
+    !!currentStreakElement
+  );
+}
+
+// Initialize elements immediately if possible
+if (isBrowser) {
+  // Try to initialize elements immediately
+  initDOMElements();
+  
+  // Also set up for deferred initialization once DOM is fully loaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDOMElements);
+  }
+  
+  // Last resort - window load event
+  window.addEventListener('load', initDOMElements);
 }
 
 /**
@@ -48,6 +73,11 @@ if (isBrowser) {
  */
 async function initApp() {
   try {
+    console.log('Initializing application...');
+    
+    // Make sure DOM elements are initialized first
+    initDOMElements();
+    
     // Register service worker for offline support
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js')
@@ -65,7 +95,7 @@ async function initApp() {
     // Load user data from localStorage
     loadUserData();
     
-    // Display stats
+    // Display stats (including streak data)
     updateStats();
     
     // Set up event listeners
@@ -74,9 +104,12 @@ async function initApp() {
     // Show first word
     showNextWord();
     
+    console.log('Application initialization complete');
   } catch (error) {
     console.error('Error initializing app:', error);
-    currentWordElement.textContent = 'Error loading vocabulary';
+    if (currentWordElement) {
+      currentWordElement.textContent = 'Error loading vocabulary';
+    }
   }
 }
 
@@ -115,6 +148,12 @@ function loadUserData() {
     totalViews = totalViewsString ? parseInt(totalViewsString, 10) : 0;
     
     console.log(`Loaded user data: ${totalViews} total views, ${learnedWords.length} learned words`);
+    
+    // Also log streak information for debugging
+    const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+    const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+    console.log('Loaded daily count:', dailyCountJson);
+    console.log('Loaded streak data:', streakJson);
   } catch (error) {
     console.error('Error loading user data:', error);
     // Reset data if there's an error
@@ -134,6 +173,11 @@ function saveUserData() {
     localStorage.setItem(STORAGE_KEYS.SCHEDULED_WORDS, JSON.stringify(scheduledWords));
     localStorage.setItem(STORAGE_KEYS.LEARNED_WORDS, JSON.stringify(learnedWords));
     localStorage.setItem(STORAGE_KEYS.TOTAL_VIEWS, totalViews.toString());
+    
+    // We don't need to save the daily count and streak data here
+    // as those are already saved in updateDailyStreak()
+    
+    console.log('User data saved successfully');
   } catch (error) {
     console.error('Error saving user data:', error);
   }
@@ -143,15 +187,31 @@ function saveUserData() {
  * Update displayed statistics
  */
 function updateStats() {
-  totalViewsElement.textContent = `Total Views: ${totalViews}`;
-  learnedWordsElement.textContent = `Learned Words: ${learnedWords.length}`;
+  // Re-initialize DOM elements if they're not available
+  if (isBrowser && (!totalViewsElement || !learnedWordsElement || !dailyProgressElement || !currentStreakElement)) {
+    console.log('Re-initializing DOM elements in updateStats');
+    initDOMElements();
+  }
   
-  // Add streak and daily progress stats
-  if (document.getElementById('daily-progress')) {
+  // Update general stats if elements are available
+  if (totalViewsElement) {
+    totalViewsElement.textContent = `Total Views: ${totalViews}`;
+  }
+  
+  if (learnedWordsElement) {
+    learnedWordsElement.textContent = `Learned Words: ${learnedWords.length}`;
+  }
+  
+  // Add streak and daily progress stats if elements are available
+  if (dailyProgressElement && currentStreakElement) {
     const todayCount = getTodayWordCount();
     const streak = getCurrentStreak();
-    document.getElementById('daily-progress').textContent = `Today: ${todayCount}/${DAILY_TARGET}`;
-    document.getElementById('current-streak').textContent = `Streak: ${streak} days`;
+    console.log('Updating streak stats:', todayCount, streak);
+    
+    dailyProgressElement.textContent = `Today: ${todayCount}/${DAILY_TARGET}`;
+    currentStreakElement.textContent = `Streak: ${streak} days`;
+  } else {
+    console.warn('Streak elements not found:', !!dailyProgressElement, !!currentStreakElement);
   }
 }
 
@@ -463,28 +523,44 @@ function getStreakStartDate() {
  * Update daily streak
  */
 function updateDailyStreak() {
+  console.log('Updating daily streak...');
   const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   
   // Get existing streak data
   let streak = { currentStreak: 0, startDate: todayStr };
   const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
   if (streakJson) {
-    streak = JSON.parse(streakJson);
+    try {
+      streak = JSON.parse(streakJson);
+      console.log('Loaded existing streak:', streak);
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+    }
   }
   
   // Get existing data for daily count
   const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  let savedDailyCount = null;
   
   if (dailyCountJson) {
-    const savedDailyCount = JSON.parse(dailyCountJson);
-    
+    try {
+      savedDailyCount = JSON.parse(dailyCountJson);
+      console.log('Loaded daily count:', savedDailyCount);
+    } catch (e) {
+      console.error('Error parsing daily count data:', e);
+    }
+  }
+  
+  if (savedDailyCount) {
     // If the saved date is today, increment count
     if (savedDailyCount.date === todayStr) {
       savedDailyCount.count += 1;
+      console.log('Incremented today count to:', savedDailyCount.count);
       
       // If we just reached the daily target, increment streak
       if (savedDailyCount.count === DAILY_TARGET) {
         streak.currentStreak += 1;
+        console.log('Daily target reached! Incremented streak to:', streak.currentStreak);
       }
       
       // Save updated daily count
@@ -496,21 +572,26 @@ function updateDailyStreak() {
       const timeDiff = today.getTime() - savedDate.getTime();
       const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
       
+      console.log('Day difference:', dayDiff);
+      
       // Create new daily count for today
       const newDailyCount = { date: todayStr, count: 1 };
       
       // Check if we missed a day (gap > 1 day)
       if (dayDiff > 1) {
         // Missed a day, reset streak
+        console.log('Missed a day, resetting streak');
         streak.currentStreak = 0;
         streak.startDate = todayStr;
       } else if (dayDiff === 1) {
         // Consecutive day, check if yesterday met the target
         if (savedDailyCount.count >= DAILY_TARGET) {
           // Continue streak (don't increment until today's target is met)
+          console.log('Yesterday met target, maintaining streak:', streak.currentStreak);
           // Keep current streak value
         } else {
           // Yesterday didn't meet target, reset streak
+          console.log('Yesterday did not meet target, resetting streak');
           streak.currentStreak = 0;
           streak.startDate = todayStr;
         }
@@ -521,16 +602,41 @@ function updateDailyStreak() {
     }
   } else {
     // No previous data, start with count 1
+    console.log('No previous daily count, starting with 1');
     const newDailyCount = { date: todayStr, count: 1 };
     localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
   }
   
   // Save updated streak
   localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+  console.log('Saved streak data:', JSON.stringify(streak));
+  
+  // Update the UI to reflect the new streak data
+  updateStats();
 }
 
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
+
+// Ensure data is saved when the user closes the page
+if (isBrowser) {
+  window.addEventListener('beforeunload', function() {
+    // Make sure streak stats are up-to-date when the page is closed
+    updateStats();
+    saveUserData();
+  });
+  
+  // Periodically check to make sure streak is displayed
+  // This is a safeguard for when the page loads from cache
+  setInterval(() => {
+    if (!dailyProgressElement || !currentStreakElement || 
+        !dailyProgressElement.textContent || !currentStreakElement.textContent) {
+      console.log('Streak display check: re-initializing elements and stats');
+      initDOMElements();
+      updateStats();
+    }
+  }, 2000); // Check every 2 seconds
+}
 
 // Export for testing (will be ignored in browser)
 if (typeof module !== 'undefined' && module.exports) {
