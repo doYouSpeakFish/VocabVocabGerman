@@ -14,7 +14,12 @@
 <body>
   <div class="app-container">
     <header id="top">
-      <h1>VocabVocab</h1>
+      <div class="header-left">
+        <h1>VocabVocab</h1>
+      </div>
+      <div class="header-right">
+        <button id="settings-button" class="icon-button" aria-label="Settings">⚙️</button>
+      </div>
       <div class="stats">
         <span id="total-views">Total Reviews: 0</span>
         <span id="learned-words">Learned Words: 0</span>
@@ -41,6 +46,27 @@
         <button id="next-button" class="btn">Next Word</button>
       </div>
     </main>
+    
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button id="close-settings" class="close-button">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="setting-item">
+            <label for="daily-target-input">Daily Target:</label>
+            <div class="input-with-buttons">
+              <button id="decrease-target" class="small-btn">-</button>
+              <input type="number" id="daily-target-input" min="1" max="200">
+              <button id="increase-target" class="small-btn">+</button>
+            </div>
+          </div>
+          <button id="save-settings" class="btn">Save Settings</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="js/app.js" type="module"></script>
