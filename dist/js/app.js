@@ -6,7 +6,8 @@ const STORAGE_KEYS = {
   TOTAL_VIEWS: 'vocabvocab_total_views',
   DAILY_COUNT: 'vocabvocab_daily_count',
   STREAK: 'vocabvocab_streak',
-  DAILY_TARGET: 'vocabvocab_daily_target'
+  DAILY_TARGET: 'vocabvocab_daily_target',
+  TARGET_REACHED: 'vocabvocab_target_reached' // New key to track if target was reached today
 };
 
 const SPACED_REPETITION = {
@@ -117,10 +118,14 @@ async function initApp() {
     
     // Set up settings event listeners
     if (settingsButton && settingsModal && closeSettingsButton && saveSettingsButton) {
+      // Ensure modal is hidden initially
+      settingsModal.classList.remove('show');
+      
       // Open settings modal
       settingsButton.addEventListener('click', () => {
         // Set current daily target in the input
         if (dailyTargetInput) {
+          // Pre-populate with current value
           dailyTargetInput.value = dailyTarget;
         }
         
@@ -167,6 +172,24 @@ async function initApp() {
             settingsModal.classList.remove('show');
           }
         }
+      });
+      
+      // Also handle Enter key in input field
+      dailyTargetInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+          const newTarget = parseInt(dailyTargetInput.value, 10);
+          if (setDailyTarget(newTarget)) {
+            // Close modal after saving
+            settingsModal.classList.remove('show');
+          }
+        }
+      });
+    } else {
+      console.error('Settings UI elements not found', {
+        settingsButton, 
+        settingsModal, 
+        closeSettingsButton, 
+        saveSettingsButton
       });
     }
     
@@ -535,6 +558,139 @@ function shuffleArray(array) {
 }
 
 /**
+ * Has the daily target been reached today?
+ */
+function hasReachedDailyTarget() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  return localStorage.getItem(STORAGE_KEYS.TARGET_REACHED) === todayStr;
+}
+
+/**
+ * Mark daily target as reached for today
+ */
+function markDailyTargetReached() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  localStorage.setItem(STORAGE_KEYS.TARGET_REACHED, todayStr);
+}
+
+/**
+ * Update daily streak
+ */
+function updateDailyStreak() {
+  console.log('Updating daily streak...');
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Get existing streak data
+  let streak = { currentStreak: 0, startDate: todayStr };
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  if (streakJson) {
+    try {
+      streak = JSON.parse(streakJson);
+      console.log('Loaded existing streak:', streak);
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+    }
+  }
+  
+  // Get existing data for daily count
+  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  let savedDailyCount = null;
+  
+  if (dailyCountJson) {
+    try {
+      savedDailyCount = JSON.parse(dailyCountJson);
+      console.log('Loaded daily count:', savedDailyCount);
+    } catch (e) {
+      console.error('Error parsing daily count data:', e);
+    }
+  }
+  
+  // Check if target has already been reached today
+  const targetReachedToday = hasReachedDailyTarget();
+  
+  if (savedDailyCount) {
+    // If the saved date is today, increment count
+    if (savedDailyCount.date === todayStr) {
+      savedDailyCount.count += 1;
+      console.log('Incremented today count to:', savedDailyCount.count);
+      
+      // If we just reached the daily target and haven't already reached it today, increment streak
+      if (savedDailyCount.count >= dailyTarget && !targetReachedToday) {
+        streak.currentStreak += 1;
+        console.log('Daily target reached! Incremented streak to:', streak.currentStreak);
+        
+        // Mark target as reached for today
+        markDailyTargetReached();
+      }
+      
+      // Save updated daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(savedDailyCount));
+    } else {
+      // It's a new day
+      const savedDate = new Date(savedDailyCount.date);
+      const today = new Date(todayStr);
+      const timeDiff = today.getTime() - savedDate.getTime();
+      const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+      
+      console.log('Day difference:', dayDiff);
+      
+      // Create new daily count for today
+      const newDailyCount = { date: todayStr, count: 1 };
+      
+      // Check if we missed a day (gap > 1 day)
+      if (dayDiff > 1) {
+        // Missed a day, reset streak
+        console.log('Missed a day, resetting streak');
+        streak.currentStreak = 0;
+        streak.startDate = todayStr;
+      } else if (dayDiff === 1) {
+        // Consecutive day, check if yesterday met the target
+        if (savedDailyCount.count >= dailyTarget) {
+          // Continue streak (don't increment until today's target is met)
+          console.log('Yesterday met target, maintaining streak:', streak.currentStreak);
+          // Keep current streak value
+        } else {
+          // Yesterday didn't meet target, reset streak
+          console.log('Yesterday did not meet target, resetting streak');
+          streak.currentStreak = 0;
+          streak.startDate = todayStr;
+        }
+      }
+      
+      // Save new daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+      
+      // New day, clear target reached flag
+      localStorage.removeItem(STORAGE_KEYS.TARGET_REACHED);
+      
+      // Check if we reached the target with the first word of the day
+      if (newDailyCount.count >= dailyTarget) {
+        streak.currentStreak += 1;
+        markDailyTargetReached();
+      }
+    }
+  } else {
+    // No previous data, start with count 1
+    console.log('No previous daily count, starting with 1');
+    const newDailyCount = { date: todayStr, count: 1 };
+    localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+    
+    // Check if we reached the target with the first word of the day
+    if (newDailyCount.count >= dailyTarget) {
+      streak.currentStreak += 1;
+      markDailyTargetReached();
+    }
+  }
+  
+  // Save updated streak
+  localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+  console.log('Saved streak data:', JSON.stringify(streak));
+  
+  // Update the UI to reflect the new streak data
+  updateStats();
+}
+
+/**
  * Get today's word count
  */
 function getTodayWordCount() {
@@ -593,102 +749,6 @@ function getStreakStartDate() {
 }
 
 /**
- * Update daily streak
- */
-function updateDailyStreak() {
-  console.log('Updating daily streak...');
-  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  
-  // Get existing streak data
-  let streak = { currentStreak: 0, startDate: todayStr };
-  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
-  if (streakJson) {
-    try {
-      streak = JSON.parse(streakJson);
-      console.log('Loaded existing streak:', streak);
-    } catch (e) {
-      console.error('Error parsing streak data:', e);
-    }
-  }
-  
-  // Get existing data for daily count
-  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
-  let savedDailyCount = null;
-  
-  if (dailyCountJson) {
-    try {
-      savedDailyCount = JSON.parse(dailyCountJson);
-      console.log('Loaded daily count:', savedDailyCount);
-    } catch (e) {
-      console.error('Error parsing daily count data:', e);
-    }
-  }
-  
-  if (savedDailyCount) {
-    // If the saved date is today, increment count
-    if (savedDailyCount.date === todayStr) {
-      savedDailyCount.count += 1;
-      console.log('Incremented today count to:', savedDailyCount.count);
-      
-      // If we just reached the daily target, increment streak
-      if (savedDailyCount.count === dailyTarget) {
-        streak.currentStreak += 1;
-        console.log('Daily target reached! Incremented streak to:', streak.currentStreak);
-      }
-      
-      // Save updated daily count
-      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(savedDailyCount));
-    } else {
-      // It's a new day
-      const savedDate = new Date(savedDailyCount.date);
-      const today = new Date(todayStr);
-      const timeDiff = today.getTime() - savedDate.getTime();
-      const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
-      
-      console.log('Day difference:', dayDiff);
-      
-      // Create new daily count for today
-      const newDailyCount = { date: todayStr, count: 1 };
-      
-      // Check if we missed a day (gap > 1 day)
-      if (dayDiff > 1) {
-        // Missed a day, reset streak
-        console.log('Missed a day, resetting streak');
-        streak.currentStreak = 0;
-        streak.startDate = todayStr;
-      } else if (dayDiff === 1) {
-        // Consecutive day, check if yesterday met the target
-        if (savedDailyCount.count >= dailyTarget) {
-          // Continue streak (don't increment until today's target is met)
-          console.log('Yesterday met target, maintaining streak:', streak.currentStreak);
-          // Keep current streak value
-        } else {
-          // Yesterday didn't meet target, reset streak
-          console.log('Yesterday did not meet target, resetting streak');
-          streak.currentStreak = 0;
-          streak.startDate = todayStr;
-        }
-      }
-      
-      // Save new daily count
-      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
-    }
-  } else {
-    // No previous data, start with count 1
-    console.log('No previous daily count, starting with 1');
-    const newDailyCount = { date: todayStr, count: 1 };
-    localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
-  }
-  
-  // Save updated streak
-  localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
-  console.log('Saved streak data:', JSON.stringify(streak));
-  
-  // Update the UI to reflect the new streak data
-  updateStats();
-}
-
-/**
  * Set daily target
  */
 function setDailyTarget(newTarget) {
@@ -701,10 +761,45 @@ function setDailyTarget(newTarget) {
   }
   
   console.log(`Updating daily target from ${dailyTarget} to ${target}`);
+  
+  // Get today's count
+  const todayCount = getTodayWordCount();
+  
+  // Get current streak data
+  let streak = { currentStreak: 0, startDate: new Date().toISOString().split('T')[0] };
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  if (streakJson) {
+    try {
+      streak = JSON.parse(streakJson);
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+    }
+  }
+  
+  // Get current target reached status
+  const targetReachedToday = hasReachedDailyTarget();
+  
+  // Update the target
   dailyTarget = target;
   
   // Save to localStorage
   localStorage.setItem(STORAGE_KEYS.DAILY_TARGET, dailyTarget.toString());
+  
+  // If the new target is lower than or equal to today's count and we haven't already reached it,
+  // mark it as reached now
+  if (todayCount >= dailyTarget && !targetReachedToday) {
+    // Target is met with the new lower threshold
+    console.log('Target retroactively reached with new lower threshold');
+    
+    // Increment streak
+    streak.currentStreak += 1;
+    localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+    
+    // Mark target as reached for today
+    markDailyTargetReached();
+    
+    console.log('Updated streak to:', streak.currentStreak);
+  }
   
   // Update the UI to reflect the new target
   updateStats();
@@ -735,20 +830,20 @@ if (isBrowser) {
   }, 2000); // Check every 2 seconds
 }
 
-// Export for testing (will be ignored in browser)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    getExamplesForWord,
-    scheduleWordForRepetition,
-    selectNextWord,
-    showNextWord,
-    SPACED_REPETITION,
-    getTodayWordCount,
-    updateDailyStreak,
-    getDailyTarget,
-    setDailyTarget,
-    getCurrentStreak,
-    getStreakStartDate,
-    DEFAULT_DAILY_TARGET
-  };
-} 
+// Export functions for testing
+module.exports = {
+  getDailyTarget,
+  setDailyTarget,
+  DEFAULT_DAILY_TARGET,
+  hasReachedDailyTarget,
+  markDailyTargetReached,
+  getCurrentStreak,
+  getStreakStartDate,
+  getTodayWordCount,
+  updateDailyStreak,
+  getExamplesForWord,
+  scheduleWordForRepetition,
+  selectNextWord,
+  showNextWord,
+  SPACED_REPETITION
+}; 

@@ -50,17 +50,52 @@ header h1 {
   margin-left: auto;
 }
 
+/* Settings icon button - borderless */
+.settings-icon {
+  cursor: pointer;
+  padding: 8px;
+  transition: all 0.2s;
+  color: var(--primary-color);
+  display: inline-block;
+  user-select: none;
+  width: 32px;
+  height: 32px;
+}
+
+.settings-icon:hover {
+  transform: scale(1.1);
+  color: #3367d6;
+}
+
+/* Focus styles for keyboard navigation */
+.settings-icon:focus {
+  outline: 2px solid var(--primary-color);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.settings-icon:active {
+  transform: scale(0.95);
+}
+
 .icon-button {
   background: none;
-  border: none;
-  font-size: 1.5rem;
+  border: 2px solid var(--primary-color);
+  border-radius: 50%;
+  font-size: 1.2rem;
   cursor: pointer;
-  padding: 5px;
-  transition: transform 0.2s;
+  padding: 8px 10px;
+  transition: all 0.2s;
+  color: var(--primary-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .icon-button:hover {
   transform: scale(1.1);
+  background-color: var(--primary-color);
+  color: white;
 }
 
 .stats {
@@ -185,6 +220,8 @@ header h1 {
   max-width: 500px;
   transform: translateY(-20px);
   transition: transform 0.3s;
+  position: relative;
+  top: -10%; /* Position the modal higher on the screen */
 }
 
 .modal.show .modal-content {
@@ -242,26 +279,38 @@ header h1 {
   border: 1px solid #ddd;
   border-radius: 4px;
   font-size: 16px;
-  width: 60px;
+  width: 80px;
+  /* Hide the default spinner arrows on number inputs */
+  -moz-appearance: textfield; /* Firefox */
+}
+
+/* Hide increment/decrement arrows on number inputs for Chrome, Safari, Edge, Opera */
+.input-with-buttons input::-webkit-outer-spin-button,
+.input-with-buttons input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .small-btn {
   background-color: var(--primary-color);
   color: white;
   border: none;
-  width: 30px;
-  height: 30px;
-  font-size: 16px;
+  width: 36px;
+  height: 36px;
+  font-size: 18px;
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 50%;
   margin: 0 10px;
+  font-weight: bold;
+  transition: background-color 0.3s, transform 0.2s;
 }
 
 .small-btn:hover {
   background-color: #3367d6;
+  transform: scale(1.1);
 }
 
 @media (max-width: 600px) {
@@ -275,6 +324,12 @@ header h1 {
     position: absolute;
     top: 20px;
     right: 20px;
+  }
+  
+  .settings-icon {
+    width: 36px;
+    height: 36px;
+    padding: 6px;
   }
   
   .stats, .streak-stats {
