@@ -3,13 +3,19 @@ const STORAGE_KEYS = {
   WORDS_VIEWED: 'vocabvocab_words_viewed',
   SCHEDULED_WORDS: 'vocabvocab_scheduled_words',
   LEARNED_WORDS: 'vocabvocab_learned_words',
-  TOTAL_VIEWS: 'vocabvocab_total_views'
+  TOTAL_VIEWS: 'vocabvocab_total_views',
+  DAILY_COUNT: 'vocabvocab_daily_count',
+  STREAK: 'vocabvocab_streak',
+  DAILY_TARGET: 'vocabvocab_daily_target',
+  TARGET_REACHED: 'vocabvocab_target_reached' // New key to track if target was reached today
 };
 
 const SPACED_REPETITION = {
   INITIAL_INTERVAL: 10, // First review after 10 other word views
   MAX_REPETITIONS: 6 // After 6 repetitions, the word is considered learned
 };
+
+const DEFAULT_DAILY_TARGET = 50; // Default daily target of words to view
 
 // Determine if we're in a test environment
 const isTest = typeof global !== 'undefined';
@@ -21,14 +27,20 @@ let wordsViewed = isTest ? global.wordsViewed : [];
 let scheduledWords = isTest ? global.scheduledWords : [];
 let learnedWords = isTest ? global.learnedWords : [];
 let totalViews = isTest ? global.totalViews : 0;
+let dailyTarget = DEFAULT_DAILY_TARGET; // Current daily target
 
 // Only initialize DOM elements if we're in a browser environment
 const isBrowser = typeof window !== 'undefined';
 let currentWordElement, wordStatusElement, explanationElement, 
     explanationTranslationElement, examplesContainer, nextButton, 
-    totalViewsElement, learnedWordsElement;
+    totalViewsElement, learnedWordsElement, dailyProgressElement, currentStreakElement,
+    settingsButton, settingsModal, closeSettingsButton, dailyTargetInput, 
+    saveSettingsButton, decreaseTargetButton, increaseTargetButton;
 
-if (isBrowser) {
+// Function to safely get DOM elements (handles both initial load and cache load)
+function initDOMElements() {
+  if (!isBrowser) return;
+  
   currentWordElement = document.getElementById('current-word');
   wordStatusElement = document.getElementById('word-status');
   explanationElement = document.getElementById('explanation');
@@ -37,6 +49,38 @@ if (isBrowser) {
   nextButton = document.getElementById('next-button');
   totalViewsElement = document.getElementById('total-views');
   learnedWordsElement = document.getElementById('learned-words');
+  dailyProgressElement = document.getElementById('daily-progress');
+  currentStreakElement = document.getElementById('current-streak');
+  
+  // Settings UI elements
+  settingsButton = document.getElementById('settings-button');
+  settingsModal = document.getElementById('settings-modal');
+  closeSettingsButton = document.getElementById('close-settings');
+  dailyTargetInput = document.getElementById('daily-target-input');
+  saveSettingsButton = document.getElementById('save-settings');
+  decreaseTargetButton = document.getElementById('decrease-target');
+  increaseTargetButton = document.getElementById('increase-target');
+  
+  console.log('DOM elements initialized:', 
+    !!currentWordElement, 
+    !!dailyProgressElement,
+    !!currentStreakElement,
+    !!settingsButton
+  );
+}
+
+// Initialize elements immediately if possible
+if (isBrowser) {
+  // Try to initialize elements immediately
+  initDOMElements();
+  
+  // Also set up for deferred initialization once DOM is fully loaded
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initDOMElements);
+  }
+  
+  // Last resort - window load event
+  window.addEventListener('load', initDOMElements);
 }
 
 /**
@@ -44,6 +88,11 @@ if (isBrowser) {
  */
 async function initApp() {
   try {
+    console.log('Initializing application...');
+    
+    // Make sure DOM elements are initialized first
+    initDOMElements();
+    
     // Register service worker for offline support
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('./service-worker.js')
@@ -61,18 +110,98 @@ async function initApp() {
     // Load user data from localStorage
     loadUserData();
     
-    // Display stats
+    // Display stats (including streak data)
     updateStats();
     
     // Set up event listeners
     nextButton.addEventListener('click', showNextWord);
     
+    // Set up settings event listeners
+    if (settingsButton && settingsModal && closeSettingsButton && saveSettingsButton) {
+      // Ensure modal is hidden initially
+      settingsModal.classList.remove('show');
+      
+      // Open settings modal
+      settingsButton.addEventListener('click', () => {
+        // Set current daily target in the input
+        if (dailyTargetInput) {
+          // Pre-populate with current value
+          dailyTargetInput.value = dailyTarget;
+        }
+        
+        // Show modal
+        settingsModal.classList.add('show');
+      });
+      
+      // Close settings modal
+      closeSettingsButton.addEventListener('click', () => {
+        settingsModal.classList.remove('show');
+      });
+      
+      // Click outside modal to close
+      settingsModal.addEventListener('click', (e) => {
+        if (e.target === settingsModal) {
+          settingsModal.classList.remove('show');
+        }
+      });
+      
+      // Decrease target button
+      if (decreaseTargetButton && dailyTargetInput) {
+        decreaseTargetButton.addEventListener('click', () => {
+          const currentValue = parseInt(dailyTargetInput.value, 10) || dailyTarget;
+          if (currentValue > 1) {
+            dailyTargetInput.value = currentValue - 1;
+          }
+        });
+      }
+      
+      // Increase target button
+      if (increaseTargetButton && dailyTargetInput) {
+        increaseTargetButton.addEventListener('click', () => {
+          const currentValue = parseInt(dailyTargetInput.value, 10) || dailyTarget;
+          dailyTargetInput.value = currentValue + 1;
+        });
+      }
+      
+      // Save settings
+      saveSettingsButton.addEventListener('click', () => {
+        if (dailyTargetInput) {
+          const newTarget = parseInt(dailyTargetInput.value, 10);
+          if (setDailyTarget(newTarget)) {
+            // Close modal after saving
+            settingsModal.classList.remove('show');
+          }
+        }
+      });
+      
+      // Also handle Enter key in input field
+      dailyTargetInput.addEventListener('keyup', (e) => {
+        if (e.key === 'Enter') {
+          const newTarget = parseInt(dailyTargetInput.value, 10);
+          if (setDailyTarget(newTarget)) {
+            // Close modal after saving
+            settingsModal.classList.remove('show');
+          }
+        }
+      });
+    } else {
+      console.error('Settings UI elements not found', {
+        settingsButton, 
+        settingsModal, 
+        closeSettingsButton, 
+        saveSettingsButton
+      });
+    }
+    
     // Show first word
     showNextWord();
     
+    console.log('Application initialization complete');
   } catch (error) {
     console.error('Error initializing app:', error);
-    currentWordElement.textContent = 'Error loading vocabulary';
+    if (currentWordElement) {
+      currentWordElement.textContent = 'Error loading vocabulary';
+    }
   }
 }
 
@@ -104,13 +233,21 @@ function loadUserData() {
     const scheduledWordsJson = localStorage.getItem(STORAGE_KEYS.SCHEDULED_WORDS);
     const learnedWordsJson = localStorage.getItem(STORAGE_KEYS.LEARNED_WORDS);
     const totalViewsString = localStorage.getItem(STORAGE_KEYS.TOTAL_VIEWS);
+    const dailyTargetString = localStorage.getItem(STORAGE_KEYS.DAILY_TARGET);
     
     wordsViewed = wordsViewedJson ? JSON.parse(wordsViewedJson) : [];
     scheduledWords = scheduledWordsJson ? JSON.parse(scheduledWordsJson) : [];
     learnedWords = learnedWordsJson ? JSON.parse(learnedWordsJson) : [];
     totalViews = totalViewsString ? parseInt(totalViewsString, 10) : 0;
+    dailyTarget = dailyTargetString ? parseInt(dailyTargetString, 10) : DEFAULT_DAILY_TARGET;
     
-    console.log(`Loaded user data: ${totalViews} total views, ${learnedWords.length} learned words`);
+    console.log(`Loaded user data: ${totalViews} total views, ${learnedWords.length} learned words, daily target: ${dailyTarget}`);
+    
+    // Also log streak information for debugging
+    const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+    const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+    console.log('Loaded daily count:', dailyCountJson);
+    console.log('Loaded streak data:', streakJson);
   } catch (error) {
     console.error('Error loading user data:', error);
     // Reset data if there's an error
@@ -118,6 +255,7 @@ function loadUserData() {
     scheduledWords = [];
     learnedWords = [];
     totalViews = 0;
+    dailyTarget = DEFAULT_DAILY_TARGET;
   }
 }
 
@@ -130,6 +268,12 @@ function saveUserData() {
     localStorage.setItem(STORAGE_KEYS.SCHEDULED_WORDS, JSON.stringify(scheduledWords));
     localStorage.setItem(STORAGE_KEYS.LEARNED_WORDS, JSON.stringify(learnedWords));
     localStorage.setItem(STORAGE_KEYS.TOTAL_VIEWS, totalViews.toString());
+    localStorage.setItem(STORAGE_KEYS.DAILY_TARGET, dailyTarget.toString());
+    
+    // We don't need to save the daily count and streak data here
+    // as those are already saved in updateDailyStreak()
+    
+    console.log('User data saved successfully');
   } catch (error) {
     console.error('Error saving user data:', error);
   }
@@ -139,8 +283,32 @@ function saveUserData() {
  * Update displayed statistics
  */
 function updateStats() {
-  totalViewsElement.textContent = `Total Views: ${totalViews}`;
-  learnedWordsElement.textContent = `Learned Words: ${learnedWords.length}`;
+  // Re-initialize DOM elements if they're not available
+  if (isBrowser && (!totalViewsElement || !learnedWordsElement || !dailyProgressElement || !currentStreakElement)) {
+    console.log('Re-initializing DOM elements in updateStats');
+    initDOMElements();
+  }
+  
+  // Update general stats if elements are available
+  if (totalViewsElement) {
+    totalViewsElement.textContent = `Total Views: ${totalViews}`;
+  }
+  
+  if (learnedWordsElement) {
+    learnedWordsElement.textContent = `Learned Words: ${learnedWords.length}`;
+  }
+  
+  // Add streak and daily progress stats if elements are available
+  if (dailyProgressElement && currentStreakElement) {
+    const todayCount = getTodayWordCount();
+    const streak = getCurrentStreak();
+    console.log('Updating streak stats:', todayCount, streak);
+    
+    dailyProgressElement.textContent = `Today: ${todayCount}/${dailyTarget}`;
+    currentStreakElement.textContent = `Streak: ${streak} days`;
+  } else {
+    console.warn('Streak elements not found:', !!dailyProgressElement, !!currentStreakElement);
+  }
 }
 
 /**
@@ -201,6 +369,9 @@ function showNextWord() {
     console.log('After increment in showNextWord:', totalViews);
     wordsViewed.push(currentWord);
     
+    // Update daily streak
+    updateDailyStreak();
+    
     // Schedule current word for next repetition if needed
     scheduleWordForRepetition(currentWord);
     
@@ -222,7 +393,7 @@ function showNextWord() {
   
   if (!wordToShow) {
     // No words available (should not happen with enough vocabulary)
-    currentWordElement.textContent = 'No words available';
+    currentWordElement.textContent = 'You have learned everything!';
     explanationElement.textContent = '';
     explanationTranslationElement.textContent = '';
     examplesContainer.innerHTML = '';
@@ -245,7 +416,7 @@ function showNextWord() {
   
   // Display repetition status
   if (repetitionCount === 0) {
-    wordStatusElement.textContent = 'First time';
+    wordStatusElement.textContent = 'New word';
   } else {
     wordStatusElement.textContent = `Review ${repetitionCount} of ${SPACED_REPETITION.MAX_REPETITIONS}`;
   }
@@ -386,16 +557,293 @@ function shuffleArray(array) {
   return newArray;
 }
 
+/**
+ * Has the daily target been reached today?
+ */
+function hasReachedDailyTarget() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  return localStorage.getItem(STORAGE_KEYS.TARGET_REACHED) === todayStr;
+}
+
+/**
+ * Mark daily target as reached for today
+ */
+function markDailyTargetReached() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  localStorage.setItem(STORAGE_KEYS.TARGET_REACHED, todayStr);
+}
+
+/**
+ * Update daily streak
+ */
+function updateDailyStreak() {
+  console.log('Updating daily streak...');
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Get existing streak data
+  let streak = { currentStreak: 0, startDate: todayStr };
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  if (streakJson) {
+    try {
+      streak = JSON.parse(streakJson);
+      console.log('Loaded existing streak:', streak);
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+    }
+  }
+  
+  // Get existing data for daily count
+  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  let savedDailyCount = null;
+  
+  if (dailyCountJson) {
+    try {
+      savedDailyCount = JSON.parse(dailyCountJson);
+      console.log('Loaded daily count:', savedDailyCount);
+    } catch (e) {
+      console.error('Error parsing daily count data:', e);
+    }
+  }
+  
+  // Check if target has already been reached today
+  const targetReachedToday = hasReachedDailyTarget();
+  
+  if (savedDailyCount) {
+    // If the saved date is today, increment count
+    if (savedDailyCount.date === todayStr) {
+      savedDailyCount.count += 1;
+      console.log('Incremented today count to:', savedDailyCount.count);
+      
+      // If we just reached the daily target and haven't already reached it today, increment streak
+      if (savedDailyCount.count >= dailyTarget && !targetReachedToday) {
+        streak.currentStreak += 1;
+        console.log('Daily target reached! Incremented streak to:', streak.currentStreak);
+        
+        // Mark target as reached for today
+        markDailyTargetReached();
+      }
+      
+      // Save updated daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(savedDailyCount));
+    } else {
+      // It's a new day
+      const savedDate = new Date(savedDailyCount.date);
+      const today = new Date(todayStr);
+      const timeDiff = today.getTime() - savedDate.getTime();
+      const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+      
+      console.log('Day difference:', dayDiff);
+      
+      // Create new daily count for today
+      const newDailyCount = { date: todayStr, count: 1 };
+      
+      // Check if we missed a day (gap > 1 day)
+      if (dayDiff > 1) {
+        // Missed a day, reset streak
+        console.log('Missed a day, resetting streak');
+        streak.currentStreak = 0;
+        streak.startDate = todayStr;
+      } else if (dayDiff === 1) {
+        // Consecutive day, check if yesterday met the target
+        if (savedDailyCount.count >= dailyTarget) {
+          // Continue streak (don't increment until today's target is met)
+          console.log('Yesterday met target, maintaining streak:', streak.currentStreak);
+          // Keep current streak value
+        } else {
+          // Yesterday didn't meet target, reset streak
+          console.log('Yesterday did not meet target, resetting streak');
+          streak.currentStreak = 0;
+          streak.startDate = todayStr;
+        }
+      }
+      
+      // Save new daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+      
+      // New day, clear target reached flag
+      localStorage.removeItem(STORAGE_KEYS.TARGET_REACHED);
+      
+      // Check if we reached the target with the first word of the day
+      if (newDailyCount.count >= dailyTarget) {
+        streak.currentStreak += 1;
+        markDailyTargetReached();
+      }
+    }
+  } else {
+    // No previous data, start with count 1
+    console.log('No previous daily count, starting with 1');
+    const newDailyCount = { date: todayStr, count: 1 };
+    localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+    
+    // Check if we reached the target with the first word of the day
+    if (newDailyCount.count >= dailyTarget) {
+      streak.currentStreak += 1;
+      markDailyTargetReached();
+    }
+  }
+  
+  // Save updated streak
+  localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+  console.log('Saved streak data:', JSON.stringify(streak));
+  
+  // Update the UI to reflect the new streak data
+  updateStats();
+}
+
+/**
+ * Get today's word count
+ */
+function getTodayWordCount() {
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  
+  if (!dailyCountJson) {
+    return 0;
+  }
+  
+  const dailyCount = JSON.parse(dailyCountJson);
+  
+  // If the saved date is not today, return 0
+  if (dailyCount.date !== todayStr) {
+    return 0;
+  }
+  
+  return dailyCount.count;
+}
+
+/**
+ * Get daily target
+ */
+function getDailyTarget() {
+  return dailyTarget;
+}
+
+/**
+ * Get current streak
+ */
+function getCurrentStreak() {
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  
+  if (!streakJson) {
+    return 0;
+  }
+  
+  const streak = JSON.parse(streakJson);
+  return streak.currentStreak;
+}
+
+/**
+ * Get streak start date
+ */
+function getStreakStartDate() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  
+  if (!streakJson) {
+    // If no streak exists, return today
+    return todayStr;
+  }
+  
+  const streak = JSON.parse(streakJson);
+  return streak.startDate;
+}
+
+/**
+ * Set daily target
+ */
+function setDailyTarget(newTarget) {
+  // Validate input
+  const target = parseInt(newTarget, 10);
+  
+  if (isNaN(target) || target < 1) {
+    console.error('Invalid daily target:', newTarget);
+    return false;
+  }
+  
+  console.log(`Updating daily target from ${dailyTarget} to ${target}`);
+  
+  // Get today's count
+  const todayCount = getTodayWordCount();
+  
+  // Get current streak data
+  let streak = { currentStreak: 0, startDate: new Date().toISOString().split('T')[0] };
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  if (streakJson) {
+    try {
+      streak = JSON.parse(streakJson);
+    } catch (e) {
+      console.error('Error parsing streak data:', e);
+    }
+  }
+  
+  // Get current target reached status
+  const targetReachedToday = hasReachedDailyTarget();
+  
+  // Update the target
+  dailyTarget = target;
+  
+  // Save to localStorage
+  localStorage.setItem(STORAGE_KEYS.DAILY_TARGET, dailyTarget.toString());
+  
+  // If the new target is lower than or equal to today's count and we haven't already reached it,
+  // mark it as reached now
+  if (todayCount >= dailyTarget && !targetReachedToday) {
+    // Target is met with the new lower threshold
+    console.log('Target retroactively reached with new lower threshold');
+    
+    // Increment streak
+    streak.currentStreak += 1;
+    localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+    
+    // Mark target as reached for today
+    markDailyTargetReached();
+    
+    console.log('Updated streak to:', streak.currentStreak);
+  }
+  
+  // Update the UI to reflect the new target
+  updateStats();
+  
+  return true;
+}
+
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
 
-// Export for testing (will be ignored in browser)
-if (typeof module !== 'undefined' && module.exports) {
-  module.exports = {
-    getExamplesForWord,
-    scheduleWordForRepetition,
-    selectNextWord,
-    showNextWord,
-    SPACED_REPETITION
-  };
-} 
+// Ensure data is saved when the user closes the page
+if (isBrowser) {
+  window.addEventListener('beforeunload', function() {
+    // Make sure streak stats are up-to-date when the page is closed
+    updateStats();
+    saveUserData();
+  });
+  
+  // Periodically check to make sure streak is displayed
+  // This is a safeguard for when the page loads from cache
+  setInterval(() => {
+    if (!dailyProgressElement || !currentStreakElement || 
+        !dailyProgressElement.textContent || !currentStreakElement.textContent) {
+      console.log('Streak display check: re-initializing elements and stats');
+      initDOMElements();
+      updateStats();
+    }
+  }, 2000); // Check every 2 seconds
+}
+
+// Export functions for testing
+module.exports = {
+  getDailyTarget,
+  setDailyTarget,
+  DEFAULT_DAILY_TARGET,
+  hasReachedDailyTarget,
+  markDailyTargetReached,
+  getCurrentStreak,
+  getStreakStartDate,
+  getTodayWordCount,
+  updateDailyStreak,
+  getExamplesForWord,
+  scheduleWordForRepetition,
+  selectNextWord,
+  showNextWord,
+  SPACED_REPETITION
+}; 
