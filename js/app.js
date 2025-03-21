@@ -291,7 +291,7 @@ function updateStats() {
   
   // Update general stats if elements are available
   if (totalViewsElement) {
-    totalViewsElement.textContent = `Total Views: ${totalViews}`;
+    totalViewsElement.textContent = `Total Word Reviews: ${totalViews}`;
   }
   
   if (learnedWordsElement) {
