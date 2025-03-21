@@ -3,13 +3,17 @@ const STORAGE_KEYS = {
   WORDS_VIEWED: 'vocabvocab_words_viewed',
   SCHEDULED_WORDS: 'vocabvocab_scheduled_words',
   LEARNED_WORDS: 'vocabvocab_learned_words',
-  TOTAL_VIEWS: 'vocabvocab_total_views'
+  TOTAL_VIEWS: 'vocabvocab_total_views',
+  DAILY_COUNT: 'vocabvocab_daily_count',
+  STREAK: 'vocabvocab_streak'
 };
 
 const SPACED_REPETITION = {
   INITIAL_INTERVAL: 10, // First review after 10 other word views
   MAX_REPETITIONS: 6 // After 6 repetitions, the word is considered learned
 };
+
+const DAILY_TARGET = 50; // Daily target of words to view
 
 // Determine if we're in a test environment
 const isTest = typeof global !== 'undefined';
@@ -141,6 +145,14 @@ function saveUserData() {
 function updateStats() {
   totalViewsElement.textContent = `Total Views: ${totalViews}`;
   learnedWordsElement.textContent = `Learned Words: ${learnedWords.length}`;
+  
+  // Add streak and daily progress stats
+  if (document.getElementById('daily-progress')) {
+    const todayCount = getTodayWordCount();
+    const streak = getCurrentStreak();
+    document.getElementById('daily-progress').textContent = `Today: ${todayCount}/${DAILY_TARGET}`;
+    document.getElementById('current-streak').textContent = `Streak: ${streak} days`;
+  }
 }
 
 /**
@@ -201,6 +213,9 @@ function showNextWord() {
     console.log('After increment in showNextWord:', totalViews);
     wordsViewed.push(currentWord);
     
+    // Update daily streak
+    updateDailyStreak();
+    
     // Schedule current word for next repetition if needed
     scheduleWordForRepetition(currentWord);
     
@@ -222,7 +237,7 @@ function showNextWord() {
   
   if (!wordToShow) {
     // No words available (should not happen with enough vocabulary)
-    currentWordElement.textContent = 'No words available';
+    currentWordElement.textContent = 'You have learned everything!';
     explanationElement.textContent = '';
     explanationTranslationElement.textContent = '';
     examplesContainer.innerHTML = '';
@@ -245,7 +260,7 @@ function showNextWord() {
   
   // Display repetition status
   if (repetitionCount === 0) {
-    wordStatusElement.textContent = 'First time';
+    wordStatusElement.textContent = 'New word';
   } else {
     wordStatusElement.textContent = `Review ${repetitionCount} of ${SPACED_REPETITION.MAX_REPETITIONS}`;
   }
@@ -386,6 +401,134 @@ function shuffleArray(array) {
   return newArray;
 }
 
+/**
+ * Get today's word count
+ */
+function getTodayWordCount() {
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  
+  if (!dailyCountJson) {
+    return 0;
+  }
+  
+  const dailyCount = JSON.parse(dailyCountJson);
+  
+  // If the saved date is not today, return 0
+  if (dailyCount.date !== todayStr) {
+    return 0;
+  }
+  
+  return dailyCount.count;
+}
+
+/**
+ * Get daily target
+ */
+function getDailyTarget() {
+  return DAILY_TARGET;
+}
+
+/**
+ * Get current streak
+ */
+function getCurrentStreak() {
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  
+  if (!streakJson) {
+    return 0;
+  }
+  
+  const streak = JSON.parse(streakJson);
+  return streak.currentStreak;
+}
+
+/**
+ * Get streak start date
+ */
+function getStreakStartDate() {
+  const todayStr = new Date().toISOString().split('T')[0];
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  
+  if (!streakJson) {
+    // If no streak exists, return today
+    return todayStr;
+  }
+  
+  const streak = JSON.parse(streakJson);
+  return streak.startDate;
+}
+
+/**
+ * Update daily streak
+ */
+function updateDailyStreak() {
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+  
+  // Get existing streak data
+  let streak = { currentStreak: 0, startDate: todayStr };
+  const streakJson = localStorage.getItem(STORAGE_KEYS.STREAK);
+  if (streakJson) {
+    streak = JSON.parse(streakJson);
+  }
+  
+  // Get existing data for daily count
+  const dailyCountJson = localStorage.getItem(STORAGE_KEYS.DAILY_COUNT);
+  
+  if (dailyCountJson) {
+    const savedDailyCount = JSON.parse(dailyCountJson);
+    
+    // If the saved date is today, increment count
+    if (savedDailyCount.date === todayStr) {
+      savedDailyCount.count += 1;
+      
+      // If we just reached the daily target, increment streak
+      if (savedDailyCount.count === DAILY_TARGET) {
+        streak.currentStreak += 1;
+      }
+      
+      // Save updated daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(savedDailyCount));
+    } else {
+      // It's a new day
+      const savedDate = new Date(savedDailyCount.date);
+      const today = new Date(todayStr);
+      const timeDiff = today.getTime() - savedDate.getTime();
+      const dayDiff = Math.floor(timeDiff / (1000 * 3600 * 24));
+      
+      // Create new daily count for today
+      const newDailyCount = { date: todayStr, count: 1 };
+      
+      // Check if we missed a day (gap > 1 day)
+      if (dayDiff > 1) {
+        // Missed a day, reset streak
+        streak.currentStreak = 0;
+        streak.startDate = todayStr;
+      } else if (dayDiff === 1) {
+        // Consecutive day, check if yesterday met the target
+        if (savedDailyCount.count >= DAILY_TARGET) {
+          // Continue streak (don't increment until today's target is met)
+          // Keep current streak value
+        } else {
+          // Yesterday didn't meet target, reset streak
+          streak.currentStreak = 0;
+          streak.startDate = todayStr;
+        }
+      }
+      
+      // Save new daily count
+      localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+    }
+  } else {
+    // No previous data, start with count 1
+    const newDailyCount = { date: todayStr, count: 1 };
+    localStorage.setItem(STORAGE_KEYS.DAILY_COUNT, JSON.stringify(newDailyCount));
+  }
+  
+  // Save updated streak
+  localStorage.setItem(STORAGE_KEYS.STREAK, JSON.stringify(streak));
+}
+
 // Initialize the app when the DOM is loaded
 document.addEventListener('DOMContentLoaded', initApp);
 
@@ -396,6 +539,12 @@ if (typeof module !== 'undefined' && module.exports) {
     scheduleWordForRepetition,
     selectNextWord,
     showNextWord,
-    SPACED_REPETITION
+    SPACED_REPETITION,
+    getTodayWordCount,
+    updateDailyStreak,
+    getDailyTarget,
+    getCurrentStreak,
+    getStreakStartDate,
+    DAILY_TARGET
   };
 } 
